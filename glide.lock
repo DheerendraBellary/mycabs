@@ -1,0 +1,50 @@
+hash: d3510f514ae2d2c574f424ebda657abd249080f04e4ca3be614f7f659d9be683
+updated: 2020-09-06T01:23:55.015918502+05:30
+imports:
+- name: github.com/aws/aws-sdk-go
+  version: 533662cdfefcf595d426bb25511e2bf39b62fca5
+  subpackages:
+  - aws
+  - aws/awserr
+  - aws/awsutil
+  - aws/client
+  - aws/client/metadata
+  - aws/corehandlers
+  - aws/credentials
+  - aws/credentials/ec2rolecreds
+  - aws/credentials/endpointcreds
+  - aws/credentials/processcreds
+  - aws/credentials/stscreds
+  - aws/crr
+  - aws/csm
+  - aws/defaults
+  - aws/ec2metadata
+  - aws/endpoints
+  - aws/request
+  - aws/session
+  - aws/signer/v4
+  - internal/context
+  - internal/ini
+  - internal/sdkio
+  - internal/sdkmath
+  - internal/sdkrand
+  - internal/sdkuri
+  - internal/shareddefaults
+  - internal/strings
+  - internal/sync/singleflight
+  - private/protocol
+  - private/protocol/json/jsonutil
+  - private/protocol/jsonrpc
+  - private/protocol/query
+  - private/protocol/query/queryutil
+  - private/protocol/rest
+  - private/protocol/xml/xmlutil
+  - service/dynamodb
+  - service/dynamodb/dynamodbattribute
+  - service/sts
+  - service/sts/stsiface
+- name: github.com/google/glog
+  version: 96a2f23dca4cc7180821ca5f32e526314395d26a
+- name: github.com/jmespath/go-jmespath
+  version: 3f887ed31e21667600265f39fc0df20430b42d62
+testImports: []
