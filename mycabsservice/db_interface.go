@@ -3,7 +3,6 @@ package mycabsservice
 import (
 	"errors"
 	"fmt"
-	"math"
 	"math/rand"
 	"mycabs/db"
 	"mycabs/lease"
@@ -88,9 +87,10 @@ func RegisterCab(req *mycabsapi.RegisterCabRequest) (cabID string, err error) {
 	cabRecord["Type"] = db.StrToAttr(req.Type)
 	cabRecord["CityID"] = db.StrToAttr(req.CityID)
 	cabRecord["State"] = db.StrToAttr(stateIdle)
-	cabRecord["LastTrip"] = db.Num64ToAttr(curTime) //Used to calculate max idle time since last trip.
-	cabRecord["ToCityID"] = db.StrToAttr("")        //A workaround to avoid separate booking record as of now.
+	cabRecord["IdleSince"] = db.Num64ToAttr(curTime) //Time since the cab was IDLE
+	cabRecord["ToCityID"] = db.StrToAttr("")         //A workaround to avoid separate booking record as of now.
 	cabRecord["History"] = db.StrSetToAttr([]string{historyRec})
+	cabRecord["PrevIdleWaiting"] = db.Num64ToAttr(0)
 
 	//Add the lease value with 0, lease will be used in distributed synchronization.
 	//This can be optimized by not setting it now and handling it lease load.
@@ -138,20 +138,29 @@ func BookCab(req *mycabsapi.BookingRequest) (cab *mycabsapi.Cab, err error) {
 	}
 
 	cabRecIndex := []int{}
-	minLastTripTime := int64(math.MaxInt64)
+	maxIdleWaiting := int64(0)
+	currTime := time.Now().Unix()
 
 	for idx, cabRec := range cabRecords {
-		lastTripTime, err := db.AttrToNum64(cabRec["LastTrip"])
+		prevIdleWaiting, err := db.AttrToNum64(cabRec["PrevIdleWaiting"])
 		if err != nil {
-			fmt.Printf("BookCab: db.AttrToNum64 failed. Err: %v\n", err)
+			fmt.Printf("BookCab: db.AttrToNum64 of PrevIdleWaiting Failed. Err: %v\n", err)
+		}
+
+		idleSince, err := db.AttrToNum64(cabRec["IdleSince"])
+		if err != nil {
+			fmt.Printf("BookCab: db.AttrToNum64 of IdleSince failed. Err: %v\n", err)
 			return nil, err
 		}
-		if lastTripTime < minLastTripTime {
+
+		totalIdleWaiting := prevIdleWaiting + (currTime - idleSince)
+
+		if totalIdleWaiting > maxIdleWaiting {
 			//Clear the cabRecIndex and store the new
 			cabRecIndex = cabRecIndex[:0]
-			minLastTripTime = lastTripTime
+			maxIdleWaiting = totalIdleWaiting
 			cabRecIndex = append(cabRecIndex, idx)
-		} else if lastTripTime == minLastTripTime {
+		} else if totalIdleWaiting == maxIdleWaiting {
 			//just add this rec also to the cabRecIndex
 			cabRecIndex = append(cabRecIndex, idx)
 		}
@@ -197,9 +206,11 @@ func BookCab(req *mycabsapi.BookingRequest) (cab *mycabsapi.Cab, err error) {
 
 	//Update the state of the cab in DB
 	updateInfo := map[string]*dynamodb.AttributeValue{
-		"State":    db.StrToAttr(stateOnTrip),
-		"ToCityID": db.StrToAttr(req.To),
-		"History":  db.StrSetToAttr(history),
+		"State":           db.StrToAttr(stateOnTrip),
+		"ToCityID":        db.StrToAttr(req.To),
+		"History":         db.StrSetToAttr(history),
+		"PrevIdleWaiting": db.Num64ToAttr(maxIdleWaiting),
+		"IdleSince":       db.Num64ToAttr(0),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateIdle),
@@ -256,11 +267,11 @@ func EndTrip(req *mycabsapi.EndTripRequest) error {
 	history = append(history, histRec)
 
 	updateInfo := map[string]*dynamodb.AttributeValue{
-		"State":    db.StrToAttr(stateIdle),
-		"CityID":   db.StrToAttr(cityID),
-		"ToCityID": db.StrToAttr(""),
-		"LastTrip": db.Num64ToAttr(time.Now().Unix()),
-		"History":  db.StrSetToAttr(history),
+		"State":     db.StrToAttr(stateIdle),
+		"CityID":    db.StrToAttr(cityID),
+		"ToCityID":  db.StrToAttr(""),
+		"IdleSince": db.Num64ToAttr(time.Now().Unix()),
+		"History":   db.StrSetToAttr(history),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateOnTrip),
@@ -282,14 +293,29 @@ func DeActivateCab(req *mycabsapi.DeActivateCabRequest) error {
 		return err
 	}
 
+	prevIdleWaiting, err := db.AttrToNum64(cabRec["PrevIdleWaiting"])
+	if err != nil {
+		fmt.Printf("DeActivateCab: db.AttrToNum64 of PrevIdleWaiting Failed. Err: %v\n", err)
+	}
+
+	idleSince, err := db.AttrToNum64(cabRec["IdleSince"])
+	if err != nil {
+		fmt.Printf("BookCab: db.AttrToNum64 of IdleSince failed. Err: %v\n", err)
+		return err
+	}
+
+	totalIdleWaiting := prevIdleWaiting + (time.Now().Unix() - idleSince)
+
 	//Cab History
 	history := db.AttrToStrSet(cabRec["History"])
 	histRec := fmt.Sprintf("%v. State: %v | Time: %v", len(history), stateInActive, time.Now())
 	history = append(history, histRec)
 
 	updateInfo := map[string]*dynamodb.AttributeValue{
-		"State":   db.StrToAttr(stateInActive),
-		"History": db.StrSetToAttr(history),
+		"State":           db.StrToAttr(stateInActive),
+		"History":         db.StrSetToAttr(history),
+		"PrevIdleWaiting": db.Num64ToAttr(totalIdleWaiting),
+		"IdleSince":       db.Num64ToAttr(0),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateIdle),
@@ -318,9 +344,9 @@ func ActivateCab(req *mycabsapi.ActivateCabRequest) error {
 	history = append(history, histRec)
 
 	updateInfo := map[string]*dynamodb.AttributeValue{
-		"State":    db.StrToAttr(stateIdle),
-		"LastTrip": db.Num64ToAttr(time.Now().Unix()),
-		"History":  db.StrSetToAttr(history),
+		"State":     db.StrToAttr(stateIdle),
+		"IdleSince": db.Num64ToAttr(time.Now().Unix()),
+		"History":   db.StrSetToAttr(history),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateInActive),
