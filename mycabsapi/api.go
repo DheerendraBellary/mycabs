@@ -72,4 +72,10 @@ type ActivateCabRequest struct {
 	ID string `json:"id"`
 }
 
+//ChangeCityRequest ...
+type ChangeCityRequest struct {
+	CabID  string `json:"cabid"`
+	CityID string `json:"cityid"`
+}
+
 //////////////////////////////////////////////////////////////////////////////////

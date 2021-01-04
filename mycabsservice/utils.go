@@ -54,7 +54,7 @@ func validateBookingReq(req *mycabsapi.BookingRequest) error {
 //validateEndTripReq ...
 func validateEndTripReq(req *mycabsapi.EndTripRequest) error {
 	if req.CabID == "" {
-		return errors.New("validateEndTripReq: CabID be Empty")
+		return errors.New("validateEndTripReq: CabID cannot be Empty")
 	}
 	return nil
 }
@@ -62,7 +62,7 @@ func validateEndTripReq(req *mycabsapi.EndTripRequest) error {
 //validateEndTripReq ...
 func validateDeActivateCabReq(req *mycabsapi.DeActivateCabRequest) error {
 	if req.ID == "" {
-		return errors.New("validateDeActivateCabReq: ID be Empty")
+		return errors.New("validateDeActivateCabReq: cannot ID be Empty")
 	}
 	return nil
 }
@@ -70,7 +70,15 @@ func validateDeActivateCabReq(req *mycabsapi.DeActivateCabRequest) error {
 //validateEndTripReq ...
 func validateActivateCabReq(req *mycabsapi.ActivateCabRequest) error {
 	if req.ID == "" {
-		return errors.New("validateActivateCabReq: ID be Empty")
+		return errors.New("validateActivateCabReq: ID cannot be Empty")
+	}
+	return nil
+}
+
+//validateChangeCityReq ...
+func validateChangeCityReq(req *mycabsapi.ChangeCityRequest) error {
+	if req.CityID == "" || req.CabID == "" {
+		return errors.New("validateChangeCityReq: CityID/CabID cannot be Empty")
 	}
 	return nil
 }

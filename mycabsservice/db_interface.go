@@ -280,6 +280,24 @@ func ActivateCab(req *mycabsapi.ActivateCabRequest) error {
 	return err
 }
 
+//ChangeCity (A force full update of City in InActive State) ...
+func ChangeCity(req *mycabsapi.ChangeCityRequest) error {
+	keys := map[string]*dynamodb.AttributeValue{
+		db.HKeyName: db.StrToAttr(hkeyValCabs),
+		db.RKeyName: db.StrToAttr(req.CabID),
+	}
+
+	updateInfo := map[string]*dynamodb.AttributeValue{
+		"CityID": db.StrToAttr(req.CityID),
+	}
+	cond := map[string]*dynamodb.AttributeValue{
+		"State": db.StrToAttr(stateInActive),
+	}
+
+	err := db.UpdateExclusive(tableName, keys, updateInfo, cond)
+	return err
+}
+
 //////////////////////////////////////////////////////////////////////////////////////
 
 //getNewCityID : Creates a unique id using Storage Counter and returns

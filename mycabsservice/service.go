@@ -315,7 +315,7 @@ func ActivateCabHandler(w http.ResponseWriter, r *http.Request) {
 
 		err = ActivateCab(req)
 		if err != nil {
-			errMsg := fmt.Sprintf("ActivateCabHandler: DeActivateCab Failed. Err: %v\n", err)
+			errMsg := fmt.Sprintf("ActivateCabHandler: ActivateCab Failed. Err: %v\n", err)
 			fmt.Printf(errMsg)
 			writeErrorResponse(w, http.StatusInternalServerError, errMsg)
 			return
@@ -326,6 +326,54 @@ func ActivateCabHandler(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		errMsg := fmt.Sprintf("ActivateCabHandler: Invalide Request Method. %v\n", method)
+		fmt.Printf(errMsg)
+		writeErrorResponse(w, http.StatusBadRequest, errMsg)
+		return
+	}
+}
+
+//ChangeCityHandler ...
+func ChangeCityHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("ChangeCityHandler: Received ChangeCity Request")
+	switch method := r.Method; method {
+	case http.MethodPost:
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			errMsg := fmt.Sprintf("ChangeCityHandler: Request Read Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusBadRequest, errMsg)
+			return
+		}
+		req := &mycabsapi.ChangeCityRequest{}
+		err = json.Unmarshal(body, req)
+		if err != nil {
+			errMsg := fmt.Sprintf("ChangeCityHandler: Request Processing Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusBadRequest, errMsg)
+			return
+		}
+
+		err = validateChangeCityReq(req)
+		if err != nil {
+			errMsg := fmt.Sprintf("ChangeCityHandler: Request Validation Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusBadRequest, errMsg)
+			return
+		}
+
+		err = ChangeCity(req)
+		if err != nil {
+			errMsg := fmt.Sprintf("ChangeCityHandler: ChangeCity Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusInternalServerError, errMsg)
+			return
+		}
+
+		fmt.Printf("Cab City Changed .... CityID: %v\n", req.CityID)
+		writeResponse(w, []byte{})
+
+	default:
+		errMsg := fmt.Sprintf("ChangeCityHandler: Invalide Request Method. %v\n", method)
 		fmt.Printf(errMsg)
 		writeErrorResponse(w, http.StatusBadRequest, errMsg)
 		return

@@ -25,6 +25,7 @@ func main() {
 	http.HandleFunc("/api/EndTrip", mycabsservice.EndTripHandler)
 	http.HandleFunc("/api/DeActivateCab", mycabsservice.DeActivateCabHandler)
 	http.HandleFunc("/api/ActivateCab", mycabsservice.ActivateCabHandler)
+	http.HandleFunc("/api/ChangeCity", mycabsservice.ChangeCityHandler)
 
 	http.ListenAndServe(port(), nil)
 }
