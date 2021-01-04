@@ -58,7 +58,8 @@ type BookingResponse struct {
 
 //EndTripRequest ...
 type EndTripRequest struct {
-	CabID string `json:"cabid"`
+	CabID  string `json:"cabid"`
+	CityID string `json:"cityid,omitempty"`
 }
 
 //DeActivateCabRequest ...

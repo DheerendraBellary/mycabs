@@ -86,7 +86,8 @@ func RegisterCab(req *mycabsapi.RegisterCabRequest) (cabID string, err error) {
 	cabRecord["Type"] = db.StrToAttr(req.Type)
 	cabRecord["CityID"] = db.StrToAttr(req.CityID)
 	cabRecord["State"] = db.StrToAttr(stateIdle)
-	cabRecord["LastTrip"] = db.Num64ToAttr(curTime) //Used to calculate max idle time since last trip
+	cabRecord["LastTrip"] = db.Num64ToAttr(curTime) //Used to calculate max idle time since last trip.
+	cabRecord["ToCityID"] = db.StrToAttr("")        //A workaround to avoid separate booking record as of now.
 
 	//Add the lease value with 0, lease will be used in distributed synchronization.
 	//This can be optimized by not setting it now and handling it lease load.
@@ -188,7 +189,8 @@ func BookCab(req *mycabsapi.BookingRequest) (cab *mycabsapi.Cab, err error) {
 
 	//Update the state of the cab in DB
 	updateInfo := map[string]*dynamodb.AttributeValue{
-		"State": db.StrToAttr(stateOnTrip),
+		"State":    db.StrToAttr(stateOnTrip),
+		"ToCityID": db.StrToAttr(req.To),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateIdle),
@@ -216,8 +218,21 @@ func EndTrip(req *mycabsapi.EndTripRequest) error {
 		db.HKeyName: db.StrToAttr(hkeyValCabs),
 		db.RKeyName: db.StrToAttr(req.CabID),
 	}
+
+	cityID := req.CityID
+	if cityID == "" {
+		//Take it from the Booking info, i.e. from Cab Record as of now.
+		cabRec, err := db.Get(tableName, keys)
+		if err != nil {
+			fmt.Printf("EndTrip: db.Get Failed. Err: %v\n", err)
+			return err
+		}
+		cityID = db.AttrToStr(cabRec["ToCityID"])
+	}
 	updateInfo := map[string]*dynamodb.AttributeValue{
 		"State":    db.StrToAttr(stateIdle),
+		"CityID":   db.StrToAttr(cityID),
+		"ToCityID": db.StrToAttr(""),
 		"LastTrip": db.Num64ToAttr(time.Now().Unix()),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
