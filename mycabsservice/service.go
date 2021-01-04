@@ -379,3 +379,89 @@ func ChangeCityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+//CabHistoryHandler ...
+func CabHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("CabHistoryHandler: Received CabHistory Request")
+	switch method := r.Method; method {
+	case http.MethodPost:
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			errMsg := fmt.Sprintf("CabHistoryHandler: Request Read Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusBadRequest, errMsg)
+			return
+		}
+		req := &mycabsapi.CabHistoryRequest{}
+		err = json.Unmarshal(body, req)
+		if err != nil {
+			errMsg := fmt.Sprintf("CabHistoryHandler: Request Processing Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusBadRequest, errMsg)
+			return
+		}
+
+		cabHistoryResponse, err := CabHistory(req)
+		if err != nil {
+			errMsg := fmt.Sprintf("CabHistoryHandler: CabHistory Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusInternalServerError, errMsg)
+			return
+		}
+
+		resp, err := json.Marshal(cabHistoryResponse)
+		if err != nil {
+			errMsg := fmt.Sprintf("CabHistoryHandler: Response Building Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusInternalServerError, errMsg)
+			return
+		}
+
+		fmt.Printf("Cab History Fetch Done\n")
+		writeResponse(w, resp)
+
+	default:
+		errMsg := fmt.Sprintf("CabHistoryHandler: Invalide Request Method. %v\n", method)
+		fmt.Printf(errMsg)
+		writeErrorResponse(w, http.StatusBadRequest, errMsg)
+		return
+	}
+}
+
+//DemandCityHandler ...
+func DemandCityHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("DemandCityHandler: Received CabHistory Request")
+	switch method := r.Method; method {
+	case http.MethodPost:
+
+		demandCityResp, err := DemandedCity()
+		if err != nil {
+			errMsg := fmt.Sprintf("DemandCityHandler: DemandCity Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusInternalServerError, errMsg)
+			return
+		}
+		if demandCityResp == nil {
+			fmt.Printf("DemandCityHandler: No cities were found\n")
+			writeResponse(w, []byte{})
+			return
+		}
+
+		resp, err := json.Marshal(demandCityResp)
+		if err != nil {
+			errMsg := fmt.Sprintf("DemandCityHandler: Response Building Failed. Err: %v\n", err)
+			fmt.Printf(errMsg)
+			writeErrorResponse(w, http.StatusInternalServerError, errMsg)
+			return
+		}
+
+		fmt.Printf("DemandCity Fetch Done\n")
+		writeResponse(w, resp)
+
+	default:
+		errMsg := fmt.Sprintf("DemandCityHandler: Invalide Request Method. %v\n", method)
+		fmt.Printf(errMsg)
+		writeErrorResponse(w, http.StatusBadRequest, errMsg)
+		return
+	}
+}

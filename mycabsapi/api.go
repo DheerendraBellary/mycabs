@@ -78,4 +78,20 @@ type ChangeCityRequest struct {
 	CityID string `json:"cityid"`
 }
 
+//DemandCityResonse ...
+type DemandCityResonse struct {
+	CityID   string `json:"cityid"`
+	CityName string `json:"cityname"`
+}
+
+//CabHistoryRequest ...
+type CabHistoryRequest struct {
+	CabID string `json:"cabid"`
+}
+
+//CabHistoryResonse ...
+type CabHistoryResonse struct {
+	History []string `json:"history"`
+}
+
 //////////////////////////////////////////////////////////////////////////////////

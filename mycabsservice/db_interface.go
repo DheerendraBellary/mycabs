@@ -56,6 +56,7 @@ func OnboardCity(citiReq *mycabsapi.OnboardCityRequest) (cityID string, err erro
 	cityRecord[db.RKeyName] = db.StrToAttr(cityID)
 	cityRecord["Id"] = db.StrToAttr(cityID)
 	cityRecord["Name"] = db.StrToAttr(citiReq.Name)
+	cityRecord["Bookings"] = db.Num64ToAttr(int64(0))
 
 	//Store city into DB
 	err = db.Put(tableName, cityRecord)
@@ -77,6 +78,7 @@ func RegisterCab(req *mycabsapi.RegisterCabRequest) (cabID string, err error) {
 	}
 
 	curTime := time.Now().Unix()
+	historyRec := fmt.Sprintf("%v. State: %v | From Time: %v", 0, stateIdle, time.Now())
 
 	cabRecord := make(map[string]*dynamodb.AttributeValue)
 	cabRecord[db.HKeyName] = db.StrToAttr(hkeyValCabs)
@@ -88,6 +90,7 @@ func RegisterCab(req *mycabsapi.RegisterCabRequest) (cabID string, err error) {
 	cabRecord["State"] = db.StrToAttr(stateIdle)
 	cabRecord["LastTrip"] = db.Num64ToAttr(curTime) //Used to calculate max idle time since last trip.
 	cabRecord["ToCityID"] = db.StrToAttr("")        //A workaround to avoid separate booking record as of now.
+	cabRecord["History"] = db.StrSetToAttr([]string{historyRec})
 
 	//Add the lease value with 0, lease will be used in distributed synchronization.
 	//This can be optimized by not setting it now and handling it lease load.
@@ -187,10 +190,16 @@ func BookCab(req *mycabsapi.BookingRequest) (cab *mycabsapi.Cab, err error) {
 	defer ls.Release()
 	defer close(abort)
 
+	//Cab History
+	history := db.AttrToStrSet(cabRecords[cabIdx]["History"])
+	histRec := fmt.Sprintf("%v. State: %v | Traveling From: %v to %v | StartTime: %v", len(history), stateOnTrip, req.From, req.To, time.Now())
+	history = append(history, histRec)
+
 	//Update the state of the cab in DB
 	updateInfo := map[string]*dynamodb.AttributeValue{
 		"State":    db.StrToAttr(stateOnTrip),
 		"ToCityID": db.StrToAttr(req.To),
+		"History":  db.StrSetToAttr(history),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateIdle),
@@ -200,6 +209,17 @@ func BookCab(req *mycabsapi.BookingRequest) (cab *mycabsapi.Cab, err error) {
 	if err != nil {
 		fmt.Printf("BookCab: db.UpdateExclusive failed. Err: %v\n", err)
 		return nil, err
+	}
+
+	//Try Udating BookingCount of the City.
+	citykeys := map[string]*dynamodb.AttributeValue{
+		db.HKeyName: db.StrToAttr(hkeyValCities),
+		db.RKeyName: db.StrToAttr(req.From),
+	}
+	_, err = db.Increment(tableName, citykeys, "Bookings", 1)
+	if err != nil {
+		//Just log the error and move ahead to return the cab.
+		fmt.Printf("BookCab Failed: %v\n", err)
 	}
 
 	//Now once the state of the cab is changed to ON_TRIP, it is ensured that
@@ -219,27 +239,34 @@ func EndTrip(req *mycabsapi.EndTripRequest) error {
 		db.RKeyName: db.StrToAttr(req.CabID),
 	}
 
+	cabRec, err := db.Get(tableName, keys)
+	if err != nil {
+		fmt.Printf("EndTrip: db.Get Failed. Err: %v\n", err)
+		return err
+	}
+
 	cityID := req.CityID
 	if cityID == "" {
-		//Take it from the Booking info, i.e. from Cab Record as of now.
-		cabRec, err := db.Get(tableName, keys)
-		if err != nil {
-			fmt.Printf("EndTrip: db.Get Failed. Err: %v\n", err)
-			return err
-		}
 		cityID = db.AttrToStr(cabRec["ToCityID"])
 	}
+
+	//Cab History
+	history := db.AttrToStrSet(cabRec["History"])
+	histRec := fmt.Sprintf("%v. State: %v | Trip Ended In: %v | EndTime: %v", len(history), stateIdle, cityID, time.Now())
+	history = append(history, histRec)
+
 	updateInfo := map[string]*dynamodb.AttributeValue{
 		"State":    db.StrToAttr(stateIdle),
 		"CityID":   db.StrToAttr(cityID),
 		"ToCityID": db.StrToAttr(""),
 		"LastTrip": db.Num64ToAttr(time.Now().Unix()),
+		"History":  db.StrSetToAttr(history),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateOnTrip),
 	}
 
-	err := db.UpdateExclusive(tableName, keys, updateInfo, cond)
+	err = db.UpdateExclusive(tableName, keys, updateInfo, cond)
 	return err
 }
 
@@ -249,15 +276,26 @@ func DeActivateCab(req *mycabsapi.DeActivateCabRequest) error {
 		db.HKeyName: db.StrToAttr(hkeyValCabs),
 		db.RKeyName: db.StrToAttr(req.ID),
 	}
+	cabRec, err := db.Get(tableName, keys)
+	if err != nil {
+		fmt.Printf("DeActivateCab: db.Get Failed. Err: %v\n", err)
+		return err
+	}
+
+	//Cab History
+	history := db.AttrToStrSet(cabRec["History"])
+	histRec := fmt.Sprintf("%v. State: %v | Time: %v", len(history), stateInActive, time.Now())
+	history = append(history, histRec)
 
 	updateInfo := map[string]*dynamodb.AttributeValue{
-		"State": db.StrToAttr(stateInActive),
+		"State":   db.StrToAttr(stateInActive),
+		"History": db.StrSetToAttr(history),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateIdle),
 	}
 
-	err := db.UpdateExclusive(tableName, keys, updateInfo, cond)
+	err = db.UpdateExclusive(tableName, keys, updateInfo, cond)
 	return err
 }
 
@@ -268,15 +306,27 @@ func ActivateCab(req *mycabsapi.ActivateCabRequest) error {
 		db.RKeyName: db.StrToAttr(req.ID),
 	}
 
+	cabRec, err := db.Get(tableName, keys)
+	if err != nil {
+		fmt.Printf("ActivateCab: db.Get Failed. Err: %v\n", err)
+		return err
+	}
+
+	//Cab History
+	history := db.AttrToStrSet(cabRec["History"])
+	histRec := fmt.Sprintf("%v. State: %v | Time: %v", len(history), stateIdle, time.Now())
+	history = append(history, histRec)
+
 	updateInfo := map[string]*dynamodb.AttributeValue{
 		"State":    db.StrToAttr(stateIdle),
 		"LastTrip": db.Num64ToAttr(time.Now().Unix()),
+		"History":  db.StrSetToAttr(history),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateInActive),
 	}
 
-	err := db.UpdateExclusive(tableName, keys, updateInfo, cond)
+	err = db.UpdateExclusive(tableName, keys, updateInfo, cond)
 	return err
 }
 
@@ -287,15 +337,83 @@ func ChangeCity(req *mycabsapi.ChangeCityRequest) error {
 		db.RKeyName: db.StrToAttr(req.CabID),
 	}
 
+	cabRec, err := db.Get(tableName, keys)
+	if err != nil {
+		fmt.Printf("ActivateCab: db.Get Failed. Err: %v\n", err)
+		return err
+	}
+	curCity := db.AttrToStr(cabRec["CityID"])
+	//Cab History
+	history := db.AttrToStrSet(cabRec["History"])
+	histRec := fmt.Sprintf("%v. City Changed From: %v to %v", len(history), curCity, req.CityID)
+	history = append(history, histRec)
+
 	updateInfo := map[string]*dynamodb.AttributeValue{
-		"CityID": db.StrToAttr(req.CityID),
+		"CityID":  db.StrToAttr(req.CityID),
+		"History": db.StrSetToAttr(history),
 	}
 	cond := map[string]*dynamodb.AttributeValue{
 		"State": db.StrToAttr(stateInActive),
 	}
 
-	err := db.UpdateExclusive(tableName, keys, updateInfo, cond)
+	err = db.UpdateExclusive(tableName, keys, updateInfo, cond)
 	return err
+}
+
+//DemandedCity ...
+func DemandedCity() (*mycabsapi.DemandCityResonse, error) {
+
+	cityRecords, err := db.Query(tableName, hkeyValCities, nil)
+
+	if err != nil {
+		fmt.Printf("DemandedCity: db.Query failed. Err: %v\n", err)
+		return nil, err
+	}
+	if len(cityRecords) == 0 {
+		fmt.Printf("DemandedCity: No cities found\n")
+		return nil, nil
+	}
+
+	maxBookings := int64(0)
+	cityIdx := 0
+	//Flaw - It returns only one in case of clash
+	for idx, cityRec := range cityRecords {
+		booking, err := db.AttrToNum64(cityRec["Bookings"])
+		if err != nil {
+			fmt.Printf("DemandedCity: db.AttrToNum64 Failed. Err: %v\n", err)
+			return nil, err
+		}
+		if booking > maxBookings {
+			maxBookings = booking
+			cityIdx = idx
+		}
+	}
+	city := &mycabsapi.DemandCityResonse{
+		CityID:   db.AttrToStr(cityRecords[cityIdx]["Id"]),
+		CityName: db.AttrToStr(cityRecords[cityIdx]["Name"]),
+	}
+	return city, nil
+}
+
+//CabHistory (A force full update of state) ...
+func CabHistory(req *mycabsapi.CabHistoryRequest) (*mycabsapi.CabHistoryResonse, error) {
+	keys := map[string]*dynamodb.AttributeValue{
+		db.HKeyName: db.StrToAttr(hkeyValCabs),
+		db.RKeyName: db.StrToAttr(req.CabID),
+	}
+
+	cabRec, err := db.Get(tableName, keys)
+	if err != nil {
+		fmt.Printf("CabHistory: db.Get Failed. Err: %v\n", err)
+		return nil, err
+	}
+
+	//Cab History
+	history := db.AttrToStrSet(cabRec["History"])
+	cabHistory := &mycabsapi.CabHistoryResonse{
+		History: history,
+	}
+	return cabHistory, nil
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
