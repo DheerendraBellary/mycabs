@@ -1,1 +1,75 @@
+##################################
+MyCabs services:
+##################################
+
+1. Onboard a new city:
+   ---------------------
+   API endpoint: /api/OnboardCity
+   HTTP method: POST
+   RequestBody: JSON
+   ex: 
+   {
+    "name":"<city>"
+   }
+   
+2. Register a new cab:
+   ---------------------
+   API endpoint: /api/RegisterCab
+   HTTP method: POST
+   RequestBody: JSON
+   ex:
+   {
+    "name":"swift_dezire",
+    "type":"sedan",
+    "cityid":"city_1"
+   }
+
+################################
+Service Deployement:
+################################
+Mycabs uses DynamoDB as a data base and for distributed syncronization.
+
+================================================================
+Starting local dynamo db docker:
+================================================================
+docker run -d -p 8000:8000 amazon/dynamodb-local
+
+
+================================================================
+using mycabs docker (docker name: doc_cabs)
+================================================================
+Starting container:
+---------------------
+docker run -d -e "MYCABS_DB_ENDPOINT=http://172.17.0.1:8000" -p 8080:8080 doc_cabs:1.0.1
+
+-e --> used the set the environment variable in docker container.
+       here 172.17.0.1 is used as docker container identifies host system with this IP
+
+-------------------------------
+Connecting to container terminal:
+-------------------------------
+docker exec -it <container id> bash
+
+-------------------------------
+Check application / service logs:
+-----------------------------------
+docker <container id> logs
+
+================================================================
+Running mycabs locally instead of docker:
+================================================================
+./mycabs
+
+
+================================================================
+Accessing DB using awscli:
+================================================================
+Listing tables:
+----------------
+aws dynamodb list-tables --endpoint http://localhost:8000
+
+--------------
+Scan table:
+--------------
+aws dynamodb scan --table-name mycabs --endpoint http://localhost:8000
 
