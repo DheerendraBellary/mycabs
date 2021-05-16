@@ -510,8 +510,17 @@ func initCabCounter() error {
 	return nil
 }
 
+func dbEndpoint() string {
+	ep := os.Getenv("MYCABS_DB_ENDPOINT")
+	if ep == "" {
+		return endpoint
+	}
+	return ep
+}
+
 func init() {
-	db.InitDBAPI(region, endpoint, accessKey, secretKey)
+	dbEndpoint := dbEndpoint()
+	db.InitDBAPI(region, dbEndpoint, accessKey, secretKey)
 	fmt.Println("Initialized DB Session ...")
 	exist, err := db.DoesTableExit(tableName)
 	if err != nil {
